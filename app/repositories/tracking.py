@@ -28,3 +28,9 @@ class TrackingRepo:
         await self.session.delete(tracking)
         await self.session.flush()
         return 
+    
+    async def get_all_unique_coins(self):
+        result = await self.session.execute(
+        select(Tracking.coin_id).distinct()
+        )
+        return result.scalars().all()
