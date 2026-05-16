@@ -11,8 +11,8 @@ class TrackingRepo:
         result = await self.session.execute(select(Tracking).where(Tracking.id == tracking_id))
         return result.scalar_one_or_none()
     
-    async def get_all_users_trackings(self, user_id: int):
-        result = await self.session.execute(select(Tracking).where(Tracking.user_id == user_id))
+    async def get_all_users_trackings(self, user_id: int, limit: int = 10, offset: int = 0):
+        result = await self.session.execute(select(Tracking).where(Tracking.user_id == user_id).limit(limit).offset(offset))
         return result.scalars().all()
     
     async def create_tracking(self, user_id: int, coin_id: str):
