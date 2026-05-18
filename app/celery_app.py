@@ -5,6 +5,7 @@ celery_app = Celery(
     "price_monitor",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
+    include=["app.tasks"]
 )
 
 celery_app.conf.update(
@@ -16,7 +17,7 @@ celery_app.conf.update(
 
 celery_app.conf.beat_schedule = {
     "fetch-prices-every-minute": {
-        "task": "app.tasks.fetch_prices",
+        "task": "app.tasks.fetch_coin_price",
         "schedule": 60.0,
     }
 }
