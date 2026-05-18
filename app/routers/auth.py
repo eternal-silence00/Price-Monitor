@@ -30,6 +30,6 @@ async def login(
         raise HTTPException(status_code=400, detail="User not found")
     verified = verify_password(data.password, user.hashed_password)
     if not verified:
-        raise HTTPException(status_code=400, detail="Wrong password")
+        raise HTTPException(status_code=401, detail="Wrong password")
     token = create_access_token({"sub":str(user.id)})
     return {"access_token":token, "token_type":"bearer"}
