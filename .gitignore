@@ -10,3 +10,5 @@ venv/
 .pytest_cache/
 htmlcov/
 .coverage
+celerybeat-schedule
+celerybeat.pid
