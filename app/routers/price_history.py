@@ -7,6 +7,18 @@ import json
 
 router = APIRouter()
 
+@router.get("/price_history/{coin_id}/latest")
+async def get_latest_coin_price(
+    coin_id: str,
+    session: AsyncSession = Depends(get_db)
+):
+    repo = PriceHistoryRepo(session)
+    result = await repo.get_latest_price(coin_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="price not found")
+    return result
+
+
 @router.get("/price_history/{coin_id}")
 async def get_price_history_by_coin_id(
     coin_id: str,

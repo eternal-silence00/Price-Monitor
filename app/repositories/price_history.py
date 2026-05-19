@@ -27,3 +27,12 @@ class PriceHistoryRepo:
             .limit(1)
         )
         return result.scalar_one_or_none()
+    
+    async def get_latest_price(self, coin_id: str):
+        result = await self.session.execute(
+            select(PriceHistory)
+            .where(PriceHistory.coin_id == coin_id)
+            .order_by(PriceHistory.timestamp.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
