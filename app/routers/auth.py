@@ -4,13 +4,15 @@ from app.database import get_db
 from app.services.auth import hash_password, verify_password, create_access_token
 from app.schemas.auth import UserCreate, UserResponse, TokenResponse
 from app.repositories.user import UserRepo
+from app.rate_limiter import rate_limit
 
 router = APIRouter()
 
 @router.post("/register", response_model=UserResponse, status_code=201)
 async def register(
     data: UserCreate,
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    _:None = Depends(rate_limit)
 ):
     repo = UserRepo(session)
     user_exsists = await repo.get_by_email(data.email)
@@ -22,7 +24,8 @@ async def register(
 @router.post("/login", response_model=TokenResponse, status_code=200)
 async def login(
     data: UserCreate,
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    _:None = Depends(rate_limit)
 ):
     repo = UserRepo(session)
     user = await repo.get_by_email(data.email)
