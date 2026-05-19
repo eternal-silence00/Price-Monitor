@@ -12,6 +12,7 @@
 - Celery + Celery Beat — фоновые задачи и планировщик
 - JWT — авторизация через токены
 - Nginx — reverse proxy
+- fastapi-mail — отправка email уведомлений
 - Docker / Docker Compose — контейнеризация
 - Pydantic — валидация данных
 - pytest — тестирование с тестовой БД
@@ -20,8 +21,11 @@
 - Регистрация и авторизация пользователей через JWT
 - Добавление и удаление криптовалют для отслеживания
 - Автоматический парсинг цен с CoinGecko API каждую минуту через Celery Beat
+- Email уведомления при изменении цены более чем на 5%
 - История цен по каждой монете с пагинацией
+- Эндпоинт для получения последней цены монеты
 - Кеширование через Redis с автоматической инвалидацией
+- Rate limiting на эндпоинты авторизации (5 запросов в минуту)
 - Nginx как reverse proxy перед FastAPI
 ## Структура проекта
  
@@ -33,7 +37,9 @@ price-monitor/
 │   ├── database.py          # Async подключение к БД
 │   ├── redis_client.py      # Redis клиент
 │   ├── celery_app.py        # Конфигурация Celery
-│   ├── tasks.py             # Celery задача для парсинга цен
+│   ├── tasks.py             # Celery задача для парсинга цен и отправки уведомлений
+│   ├── email.py             # Отправка email уведомлений
+│   ├── rate_limiter.py      # Rate limiting через Redis
 │   ├── models/
 │   │   ├── base.py
 │   │   ├── user.py
@@ -72,6 +78,7 @@ price-monitor/
 Интернет -> Nginx:80 -> FastAPI:8000 -> PostgreSQL
                                      -> Redis
                      Celery Worker   -> CoinGecko API
+                                     -> SMTP (email уведомления)
                      Celery Beat     -> (планировщик)
 ```
  
@@ -95,6 +102,11 @@ POSTGRES_PASSWORD=password
 POSTGRES_DB=price_monitor
 SECRET_KEY=your_secret_key
 ALGORITHM=HS256
+MAIL_USERNAME=your@gmail.com
+MAIL_PASSWORD=your_app_password
+MAIL_FROM=your@gmail.com
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
 ```
  
 ### 3. Запустить через Docker
@@ -117,7 +129,7 @@ http://localhost/docs
  
 ## API Endpoints
  
-### Авторизация
+### Авторизация (rate limit: 5 запросов в минуту)
  
 | Метод | Путь | Описание |
 |-------|------|----------|
@@ -137,6 +149,7 @@ http://localhost/docs
  
 | Метод | Путь | Описание |
 |-------|------|----------|
+| GET | /price_history/{coin_id}/latest | Последняя цена монеты |
 | GET | /price_history/{coin_id} | История цен монеты |
  
 ## Запуск тестов
@@ -151,8 +164,13 @@ docker-compose exec app pytest tests/ -v
  
 **Celery Beat** — планировщик запускает задачу `fetch_coin_price` каждые 60 секунд. Воркер получает список всех отслеживаемых монет и запрашивает цены из CoinGecko API.
  
+**Email уведомления** — после каждого обновления цены Celery сравнивает новую цену с предыдущей. Если изменение превышает 5% — все пользователи отслеживающие эту монету получают email через Gmail SMTP.
+ 
+**Rate limiting** — эндпоинты авторизации защищены от брутфорса. Redis хранит счётчик запросов по IP и пути. После 5 запросов в минуту возвращается 429.
+ 
 **Cache-Aside паттерн** — трекинги и история цен кешируются в Redis. Кеш инвалидируется при добавлении и удалении трекингов.
  
 **Nginx reverse proxy** — принимает все входящие запросы на порту 80 и перенаправляет на FastAPI. Передаёт реальный IP клиента через заголовки.
  
 **Repository паттерн** — слой репозитория отделяет бизнес-логику от работы с БД.
+ 
