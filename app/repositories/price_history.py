@@ -18,3 +18,12 @@ class PriceHistoryRepo:
         await self.session.refresh(record)
         return record
         
+    async def get_previous_price(self, coin_id: str):
+        result = await self.session.execute(
+            select(PriceHistory)
+            .where(PriceHistory.coin_id == coin_id)
+            .order_by(PriceHistory.timestamp.desc())
+            .offset(1)
+            .limit(1)
+        )
+        return result.scalar_one_or_none()

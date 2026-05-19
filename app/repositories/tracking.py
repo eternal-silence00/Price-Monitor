@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.tracking import Tracking
+from app.models.user import User
 
 class TrackingRepo:
     
@@ -32,5 +33,13 @@ class TrackingRepo:
     async def get_all_unique_coins(self):
         result = await self.session.execute(
         select(Tracking.coin_id).distinct()
+        )
+        return result.scalars().all()
+    
+    async def get_users_by_coin(self, coin_id: str):
+        result = await self.session.execute(
+            select(User)
+            .join(Tracking, Tracking.user_id == User.id)
+            .where(Tracking.coin_id == coin_id)
         )
         return result.scalars().all()
