@@ -7,6 +7,7 @@ from app.repositories.price_history import PriceHistoryRepo
 from app.models.user import User
 from app.models.tracking import Tracking
 from app.models.price_history import PriceHistory
+from app.email import send_price_alert
 
 COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price"
 
@@ -31,7 +32,15 @@ async def fetch_coin_price_async():
                     "vs_currencies": "usd"
                 })
                 price = response.json()[coin]["usd"]
+                
+                previous = await PriceHistoryRepo(session).get_previous_price(coin)
                 await PriceHistoryRepo(session).create_price_record(coin, price)
+                if previous:
+                    change = abs((price - previous.price) / previous.price) * 100
+                    if change >= 5:
+                        users = await TrackingRepo(session).get_users_by_coin(coin)
+                        for user in users:
+                            await send_price_alert(user.email, coin, previous.price, price)
             except Exception as e:
                 print(f"Error fetching {coin}: {e}")
                 continue
