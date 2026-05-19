@@ -12,6 +12,7 @@
 - Celery + Celery Beat — фоновые задачи и планировщик
 - JWT — авторизация через токены
 - Nginx — reverse proxy
+- WebSocket — real-time обновление цен
 - fastapi-mail — отправка email уведомлений
 - Docker / Docker Compose — контейнеризация
 - Pydantic — валидация данных
@@ -22,6 +23,7 @@
 - Добавление и удаление криптовалют для отслеживания
 - Автоматический парсинг цен с CoinGecko API каждую минуту через Celery Beat
 - Email уведомления при изменении цены более чем на 5%
+- Real-time обновление цен через WebSocket
 - История цен по каждой монете с пагинацией
 - Эндпоинт для получения последней цены монеты
 - Кеширование через Redis с автоматической инвалидацией
@@ -54,14 +56,15 @@ price-monitor/
 │   ├── routers/
 │   │   ├── auth.py
 │   │   ├── tracking.py
-│   │   └── price_history.py
+│   │   ├── price_history.py
+│   │   └── websocket.py
 │   └── schemas/
 │       ├── auth.py
 │       ├── tracking.py
 │       └── price_history.py
 ├── migrations/
 ├── nginx/
-│   └── nginx.conf           # Конфигурация reverse proxy
+│   └── nginx.conf           # Конфигурация reverse proxy + WebSocket
 ├── tests/
 │   ├── conftest.py
 │   ├── test_auth.py
@@ -76,7 +79,7 @@ price-monitor/
  
 ```
 Интернет -> Nginx:80 -> FastAPI:8000 -> PostgreSQL
-                                     -> Redis
+                     -> WebSocket    -> Redis
                      Celery Worker   -> CoinGecko API
                                      -> SMTP (email уведомления)
                      Celery Beat     -> (планировщик)
@@ -152,6 +155,19 @@ http://localhost/docs
 | GET | /price_history/{coin_id}/latest | Последняя цена монеты |
 | GET | /price_history/{coin_id} | История цен монеты |
  
+### WebSocket
+ 
+| Протокол | Путь | Описание |
+|----------|------|----------|
+| WS | /ws/{coin_id} | Real-time обновление цены монеты |
+ 
+Пример подключения:
+ 
+```javascript
+const ws = new WebSocket("ws://localhost/ws/bitcoin");
+ws.onmessage = (event) => console.log(event.data);
+```
+ 
 ## Запуск тестов
  
 ```bash
@@ -164,13 +180,14 @@ docker-compose exec app pytest tests/ -v
  
 **Celery Beat** — планировщик запускает задачу `fetch_coin_price` каждые 60 секунд. Воркер получает список всех отслеживаемых монет и запрашивает цены из CoinGecko API.
  
+**WebSocket** — клиент подключается к `ws://localhost/ws/{coin_id}` и получает последнюю цену каждые 60 секунд без необходимости делать HTTP запросы. Nginx настроен для проксирования WebSocket соединений через заголовки Upgrade.
+ 
 **Email уведомления** — после каждого обновления цены Celery сравнивает новую цену с предыдущей. Если изменение превышает 5% — все пользователи отслеживающие эту монету получают email через Gmail SMTP.
  
 **Rate limiting** — эндпоинты авторизации защищены от брутфорса. Redis хранит счётчик запросов по IP и пути. После 5 запросов в минуту возвращается 429.
  
 **Cache-Aside паттерн** — трекинги и история цен кешируются в Redis. Кеш инвалидируется при добавлении и удалении трекингов.
  
-**Nginx reverse proxy** — принимает все входящие запросы на порту 80 и перенаправляет на FastAPI. Передаёт реальный IP клиента через заголовки.
+**Nginx reverse proxy** — принимает все входящие запросы на порту 80 и перенаправляет на FastAPI. Поддерживает WebSocket через заголовки Upgrade/Connection.
  
 **Repository паттерн** — слой репозитория отделяет бизнес-логику от работы с БД.
- 
