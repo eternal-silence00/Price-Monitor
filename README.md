@@ -1,6 +1,6 @@
 # Price Monitor API
  
-Асинхронный сервис для отслеживания цен криптовалют в реальном времени. Celery автоматически получает актуальные цены с CoinGecko API каждую минуту и сохраняет историю изменений.
+Асинхронный сервис для отслеживания цен криптовалют в реальном времени. Celery автоматически запрашивает цены с CoinGecko API каждую минуту и сохраняет историю изменений.
  
 ## Стек технологий
  
@@ -8,32 +8,32 @@
 - PostgreSQL — основная база данных
 - SQLAlchemy — ORM для работы с БД
 - Alembic — миграции базы данных
-- Redis — кеширование данных (Cache-Aside паттерн)
+- Redis — кеширование + брокер для Celery
 - Celery + Celery Beat — фоновые задачи и планировщик
-- CoinGecko API — источник цен криптовалют
 - JWT — авторизация через токены
+- Nginx — reverse proxy
 - Docker / Docker Compose — контейнеризация
 - Pydantic — валидация данных
 - pytest — тестирование с тестовой БД
 ## Функциональность
  
 - Регистрация и авторизация пользователей через JWT
-- Добавление и удаление отслеживаемых криптовалют
-- Автоматический парсинг цен каждую минуту через Celery Beat
+- Добавление и удаление криптовалют для отслеживания
+- Автоматический парсинг цен с CoinGecko API каждую минуту через Celery Beat
 - История цен по каждой монете с пагинацией
 - Кеширование через Redis с автоматической инвалидацией
-- Тесты с отдельной тестовой БД
+- Nginx как reverse proxy перед FastAPI
 ## Структура проекта
  
 ```
 price-monitor/
 ├── app/
-│   ├── main.py
-│   ├── config.py
-│   ├── database.py
-│   ├── redis_client.py
-│   ├── celery_app.py
-│   ├── tasks.py
+│   ├── main.py              # Точка входа, lifespan
+│   ├── config.py            # Настройки через pydantic-settings
+│   ├── database.py          # Async подключение к БД
+│   ├── redis_client.py      # Redis клиент
+│   ├── celery_app.py        # Конфигурация Celery
+│   ├── tasks.py             # Celery задача для парсинга цен
 │   ├── models/
 │   │   ├── base.py
 │   │   ├── user.py
@@ -54,6 +54,8 @@ price-monitor/
 │       ├── tracking.py
 │       └── price_history.py
 ├── migrations/
+├── nginx/
+│   └── nginx.conf           # Конфигурация reverse proxy
 ├── tests/
 │   ├── conftest.py
 │   ├── test_auth.py
@@ -62,6 +64,15 @@ price-monitor/
 ├── docker-compose.yml
 ├── requirements.txt
 └── .env
+```
+ 
+## Архитектура
+ 
+```
+Интернет -> Nginx:80 -> FastAPI:8000 -> PostgreSQL
+                                     -> Redis
+                     Celery Worker   -> CoinGecko API
+                     Celery Beat     -> (планировщик)
 ```
  
 ## Запуск проекта
@@ -73,7 +84,7 @@ git clone https://github.com/eternal-silence00/Price-Monitor.git
 cd Price-Monitor
 ```
  
-### 2. Создать .env файл
+### 2. Создать `.env` файл
  
 ```properties
 DATABASE_URL=postgresql+asyncpg://postgres:password@db:5432/price_monitor
@@ -101,7 +112,7 @@ docker-compose exec app alembic upgrade head
 ### 5. Открыть документацию
  
 ```
-http://localhost:8000/docs
+http://localhost/docs
 ```
  
 ## API Endpoints
@@ -110,17 +121,17 @@ http://localhost:8000/docs
  
 | Метод | Путь | Описание |
 |-------|------|----------|
-| POST | /register | Регистрация пользователя |
-| POST | /login | Вход и получение JWT токена |
+| POST | /register | Регистрация |
+| POST | /login | Вход и получение JWT |
  
-### Отслеживание (требуют JWT токен)
+### Отслеживание (требуют JWT)
  
 | Метод | Путь | Описание |
 |-------|------|----------|
-| GET | /tracking | Получить все отслеживаемые монеты |
-| GET | /tracking/{tracking_id} | Получить отслеживание по ID |
-| POST | /tracking | Добавить монету для отслеживания |
-| DELETE | /tracking/{tracking_id} | Удалить отслеживание |
+| GET | /tracking | Список отслеживаемых монет |
+| POST | /tracking | Добавить монету |
+| GET | /tracking/{id} | Получить трекинг по ID |
+| DELETE | /tracking/{id} | Удалить трекинг |
  
 ### История цен
  
@@ -128,20 +139,20 @@ http://localhost:8000/docs
 |-------|------|----------|
 | GET | /price_history/{coin_id} | История цен монеты |
  
-## Архитектурные решения
- 
-JWT авторизация — stateless аутентификация. Каждый запрос содержит токен с user_id. Сервер не хранит сессии.
- 
-Cache-Aside паттерн — при запросе данных сначала проверяется Redis. Кеш инвалидируется при создании и удалении трекингов.
- 
-Celery Beat — планировщик запускает задачу парсинга каждые 60 секунд. Цены хранятся в таблице price_history и доступны всем пользователям — без дублирования данных.
- 
-Repository паттерн — слой репозитория отделяет бизнес-логику от работы с БД.
- 
 ## Запуск тестов
  
 ```bash
 docker-compose exec app pytest tests/ -v
 ```
  
-Тесты используют отдельную БД pricemonitor_test и не затрагивают основные данные.
+Тесты используют отдельную БД `pricemonitor_test` и не затрагивают основные данные.
+ 
+## Архитектурные решения
+ 
+**Celery Beat** — планировщик запускает задачу `fetch_coin_price` каждые 60 секунд. Воркер получает список всех отслеживаемых монет и запрашивает цены из CoinGecko API.
+ 
+**Cache-Aside паттерн** — трекинги и история цен кешируются в Redis. Кеш инвалидируется при добавлении и удалении трекингов.
+ 
+**Nginx reverse proxy** — принимает все входящие запросы на порту 80 и перенаправляет на FastAPI. Передаёт реальный IP клиента через заголовки.
+ 
+**Repository паттерн** — слой репозитория отделяет бизнес-логику от работы с БД.
