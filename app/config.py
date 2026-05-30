@@ -12,7 +12,11 @@ class Settings(BaseSettings):
     MAIL_SERVER:str
     MAIL_PORT:int
     
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+    env_file=".env",
+    env_file_encoding="utf-8",
+    extra="ignore"
+)
         
     
         

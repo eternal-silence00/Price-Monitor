@@ -1,33 +1,31 @@
 import pytest
+import os
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.database import get_db
 from app.models.base import Base
-import os
 
-TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "postgresql+asyncpg://postgres:password@db_test:5432/pricemonitor_test")
-
-test_engine = create_async_engine(TEST_DATABASE_URL)
-
-TestSessionLocal = sessionmaker(
-    test_engine,
-    class_=AsyncSession,
-    expire_on_commit=False
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://postgres:password@db_test:5432/pricemonitor_test"
 )
 
 @pytest.fixture(scope="session", autouse=True)
 async def prepare_database():
-    async with test_engine.begin() as conn:
+    engine = create_async_engine(TEST_DATABASE_URL)
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
-    async with test_engine.begin() as conn:
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-    await test_engine.dispose()
-    
+    await engine.dispose()
+
 async def override_get_db():
-    async with TestSessionLocal() as session:
+    engine = create_async_engine(TEST_DATABASE_URL)
+    SessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with SessionLocal() as session:
         try:
             yield session
             await session.commit()
