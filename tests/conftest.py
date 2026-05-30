@@ -5,8 +5,9 @@ from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.database import get_db
 from app.models.base import Base
+import os
 
-TEST_DATABASE_URL = "postgresql+asyncpg://postgres:password@db_test:5432/price_monitor_test"
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "postgresql+asyncpg://postgres:password@db_test:5432/pricemonitor_test")
 
 test_engine = create_async_engine(TEST_DATABASE_URL)
 
